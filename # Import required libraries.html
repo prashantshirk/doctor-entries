@@ -1,0 +1,156 @@
+# Import required libraries
+from flask import Flask, render_template, request, jsonify
+import pandas as pd
+from datetime import datetime
+import os
+
+app = Flask(__name__)
+
+# Create CSV file if it doesn't exist
+if not os.path.exists('patients.csv'):
+    df = pd.DataFrame(columns=['patient_id', 'name', 'age', 'problems', 'last_visit'])
+    df.to_csv('patients.csv', index=False)
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/add_patient', methods=['POST'])
+def add_patient():
+
+    data = request.get_json()
+    
+    # Read existing data
+    df = pd.read_csv('patients.csv')
+    
+    # Create new patient entry
+    new_patient = {
+        'patient_id': len(df) + 1,  # Auto-increment ID
+        'name': data['name'],
+        'age': data['age'],
+        'problems': data['problems'],
+        'last_visit': datetime.now().strftime('%Y-%m-%d')
+    }
+    
+    # Append new patient
+    df = df.append(new_patient, ignore_index=True)
+    df.to_csv('patients.csv', index=False)
+    
+    return jsonify({'success': True, 'patient_id': new_patient['patient_id']})
+
+@app.route('/get_patient/<int:patient_id>')
+def get_patient(patient_id):
+    df = pd.read_csv('patients.csv')
+    patient = df[df['patient_id'] == patient_id]
+    
+    if len(patient) == 0:
+        return jsonify({'error': 'Patient not found'}), 404
+        
+    return patient.to_dict('records')[0]
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+# Create templates/index.html with the following content:
+"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hospital Patient Management</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .section {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hospital Patient Management System</h1>
+    
+    <div class="container">
+        <div class="section">
+            <h2>Add New Patient</h2>
+            <div class="form-group">
+                <label>Name:</label>
+                <input type="text" id="name">
+            </div>
+            <div class="form-group">
+                <label>Age:</label>
+                <input type="number" id="age">
+            </div>
+            <div class="form-group">
+                <label>Problems:</label>
+                <textarea id="problems"></textarea>
+            </div>
+            <button onclick="addPatient()">Add Patient</button>
+        </div>
+        
+        <div class="section">
+            <h2>Search Patient</h2>
+            <div class="form-group">
+                <label>Patient ID:</label>
+                <input type="number" id="search_id">
+            </div>
+            <button onclick="searchPatient()">Search</button>
+            <div id="patient_info"></div>
+        </div>
+    </div>
+
+    <script>
+        async function addPatient() {
+            const data = {
+                name: document.getElementById('name').value,
+                age: document.getElementById('age').value,
+                problems: document.getElementById('problems').value
+            };
+
+            const response = await fetch('/add_patient', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert(`Patient added successfully! Patient ID: ${result.patient_id}`);
+            }
+        }
+
+        async function searchPatient() {
+            const patientId = document.getElementById('search_id').value;
+            const response = await fetch(`/get_patient/${patientId}`);
+            
+            if (response.ok) {
+                const patient = await response.json();
+                document.getElementById('patient_info').innerHTML = `
+                    <h3>Patient Information</h3>
+                    <p>Name: ${patient.name}</p>
+                    <p>Age: ${patient.age}</p>
+                    <p>Problems: ${patient.problems}</p>
+                    <p>Last Visit: ${patient.last_visit}</p>
+                `;
+            } else {
+                document.getElementById('patient_info').innerHTML = '<p>Patient not found</p>';
+            }
+        }
+    </script>
+</body>
+</html>
+"""
